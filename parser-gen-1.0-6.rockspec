@@ -1,10 +1,10 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "parser-gen"
-version = "1.0-5"
+version = "1.0-6"
 -- LuaDist source
 source = {
-  tag = "1.0-5",
+  tag = "1.0-6",
   url = "git://github.com/LuaDist-testing/parser-gen.git"
 }
 -- Original source
@@ -24,13 +24,12 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
-		relabel = "relabel.lua",
-		parsergen = "parser-gen.lua",
-		pegparser = "peg-parser.lua",
-		stack = "stack.lua",
-		equals = "equals.lua",
-		errorgen = "errorgen.lua"
+		["parser-gen"] = "parser-gen.lua",
+		["peg-parser"] = "peg-parser.lua",
+		["stack"] = "stack.lua",
+		["equals"] = "equals.lua",
+		["errorgen"] = "errorgen.lua",
 		
-   
+
    }
 }
