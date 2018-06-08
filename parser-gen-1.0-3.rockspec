@@ -1,15 +1,15 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "parser-gen"
-version = "1.0-2"
+version = "1.0-3"
 -- LuaDist source
 source = {
-  tag = "1.0-2",
+  tag = "1.0-3",
   url = "git://github.com/LuaDist-testing/parser-gen.git"
 }
 -- Original source
 -- source = {
---    url = "git+https://github.com/vsbenas/parser-gen"
+--    url = "git://github.com/vsbenas/parser-gen"
 -- }
 description = {
    summary = "A PEG parser generator that handles space characters, generates ASTs and adds error labels automatically.",
