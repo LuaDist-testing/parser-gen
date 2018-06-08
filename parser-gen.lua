@@ -376,13 +376,13 @@ end
 
 local function buildrecovery(grammar)
 
-	local synctoken = sync(SYNC)
+	local synctoken = pattspaces(sync(SYNC))
 	local grec = grammar
 	
 	for k,v in pairs(tlabels) do
 
 		if trecs[v] then -- custom sync token
-			grec = m.Rec(grec,record(v) * trecs[v], v)
+			grec = m.Rec(grec,record(v) * pattspaces(trecs[v]), v)
 		else -- use global sync token
 			grec = m.Rec(grec,record(v) * synctoken, v)
 		end
@@ -561,10 +561,7 @@ end
 
 
 
-<<<<<<< HEAD
+
 local pg = {compile=compile, setlabels=setlabels, parse=parse,follow=follow, calcline = peg.calcline, usenodes = usenodes}
-=======
-local pg = {compile=compile, setlabels=setlabels, parse=parse, calcline = calcline, usenodes = usenodes}
->>>>>>> 5223f9825266c41400ad0704b15a1412353f3bef
 
 return pg
