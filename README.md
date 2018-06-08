@@ -27,7 +27,8 @@ lpeglabel >= 1.2.0
 This function generates a PEG parser from the grammar description.
 
 ```lua
-grammar = parser-gen.compile(input,definitions [, errorgen, noast])
+local pg = require "parser-gen"
+grammar = pg.compile(input,definitions [, errorgen, noast])
 ```
 *Arguments*:
 
@@ -47,7 +48,7 @@ grammar = parser-gen.compile(input,definitions [, errorgen, noast])
 
 If custom error labels are used, the function *setlabels* allows setting their description (and custom recovery pattern):
 ```lua
-parser-gen.setlabels(t)
+pg.setlabels(t)
 ```
 Example table of a simple error and one with a custom recovery expression:
 ```lua
@@ -56,7 +57,7 @@ local t = {
 	missingEnd = "Missing 'end' in if expression",
 	missingThen = {"Missing 'then' in if expression", " (!stmt .)* "} -- a custom recovery pattern
 }
-parser-gen.setlabels(t)
+pg.setlabels(t)
 ```
 If the recovery pattern is not set, then the one specified by the rule SYNC will be used. It is by default set to:
 ```lua
@@ -70,7 +71,7 @@ Learn more about special rules in the grammar section.
 This operation attempts to match a grammar to the given input.
 
 ```lua
-result, errors = parser-gen.parse(input, grammar [, errorfunction])
+result, errors = pg.parse(input, grammar [, errorfunction])
 ```
 *Arguments*:
 
@@ -94,8 +95,29 @@ result, errors = pg.parse(input,grammar,printerror)
 If the parse is succesful, the function returns an abstract syntax tree containing the captures `result` and a table of any encountered `errors`. If the parse was unsuccessful, `result` is going to be **nil**.
 Also, if the `noast` option is enabled when compiling the grammar, the function will then produce the longest match length or any custom captures used.
 
+### calcline
 
-Example of all functions: a parser for the Tiny language.
+Calculates line and column information regarding position i of the subject (exported from the relabel module).
+
+```lua
+line, col = pg.calcline(subject, position)
+```
+*Arguments*:
+
+`subject` - subject string
+
+`position` - position inside the string, for example, the one given by automatic AST generation.
+
+### usenodes
+
+When AST generation is enabled, this function will enable the "node" mode, where only rules tagged with a `node` prefix will generate AST entries. Must be used before compiling the grammar.
+
+```lua
+pg.usenodes(value)
+```
+*Arguments*:
+
+`value` - a boolean value that enables or disables this function
 
 # Grammar Syntax
 
@@ -169,39 +191,49 @@ Error labels are provided by the relabel function %{errorname} (errorname must f
 Non-terminals with names in all capital letters, i.e. `[A-Z]+`, are considered tokens and are treated as a single object in parsing. That is, the whole string matched by a token is captured in a single AST entry and space characters are not consumed. Consider two examples:
 ```lua
 -- a token non-terminal
-grammar = parser-gen.compile [[
+grammar = pg.compile [[
 	WORD <- [A-Z]+
 ]]
-res, _ = parser-gen.parse("AA A", grammar) -- outputs {rule="WORD", "AA"}
+res, _ = pg.parse("AA A", grammar) -- outputs {rule="WORD", "AA"}
 ```
 ```lua
 -- a non-token non-terminal
-grammar = parser-gen.compile [[
+grammar = pg.compile [[
 	word <- [A-Z]+
 ]]
-res, _ = parser-gen.parse("AA A", grammar) -- outputs {rule="word", "A", "A", "A"}
+res, _ = pg.parse("AA A", grammar) -- outputs {rule="word", "A", "A", "A"}
 ```
 
 ### Fragments
 
 If a token definition is followed by a `fragment` keyword, then the parser does not build an AST entry for that token. Essentially, these rules are used to simplify grammars without building unnecessarily complicated ASTS. Example of `fragment` usage:
 ```lua
-grammar = parser-gen.compile [[
+grammar = pg.compile [[
 	WORD <- LETTER+
 	fragment LETTER <- [A-Z]
 ]]
-res, _ = parser-gen.parse("AA A", grammar) -- outputs {rule="WORD", "AA"}
+res, _ = pg.parse("AA A", grammar) -- outputs {rule="WORD", "AA"}
 ```
 Without using `fragment`:
 ```lua
-grammar = parser-gen.compile [[
+grammar = pg.compile [[
 	WORD <- LETTER+
 	LETTER <- [A-Z]
 ]]
-res, _ = parser-gen.parse("AA A", grammar) -- outputs {rule="WORD", {rule="LETTER", "A"}, {rule="LETTER", "A"}}
+res, _ = pg.parse("AA A", grammar) -- outputs {rule="WORD", {rule="LETTER", "A"}, {rule="LETTER", "A"}}
 
 ```
 
+### Nodes
+
+When node mode is enabled using `pg.usenodes(true)` only rules prefixed with a `node` keyword will generate AST entries:
+```lua
+grammar = pg.compile [[
+	node WORD <- LETTER+
+	LETTER <- [A-Z]
+]]
+res, _ = pg.parse("AA A", grammar) -- outputs {rule="WORD", "AA"}
+```
 ### Special rules
 
 There are two special rules used by the grammar:
@@ -239,13 +271,15 @@ SYNC <- ''
 ```
 # Example: Tiny parser
 
-Below is the full code from *parsers/tiny-parser-nocap.lua*:
+Below is the full code from *parsers/tiny-parser.lua*:
 ```lua
 local pg = require "parser-gen"
 local peg = require "peg-parser"
 local errs = {errMissingThen = "Missing Then"} -- one custom error
 pg.setlabels(errs)
 
+--warning: experimental error generation function is enabled. If the grammar isn't LL(1), set errorgen to false
+local errorgen = true
 
 local grammar = pg.compile([[
 
@@ -273,7 +307,8 @@ local grammar = pg.compile([[
 	HELPER			<- ';' / %nl / %s / KEYWORDS / !.
 	SYNC			<- (!HELPER .)*
 
-]], _, true)
+]], _, errorgen)
+
 local errors = 0
 local function printerror(desc,line,col,sfail,trec)
 	errors = errors+1
@@ -303,23 +338,32 @@ Error #2: Expected stmtsequence on line 1(col 9)
 Error #3: Expected 'end' on line 1(col 9)
 -- ast:
 rule='program',
+pos=1,
 {
          rule='stmtsequence',
+         pos=1,
          {
                   rule='statement',
+                  pos=1,
                   {
                            rule='ifstmt',
+                           pos=1,
                            'if',
                            {
                                     rule='exp',
+                                    pos=4,
                                     {
                                              rule='simpleexp',
+                                             pos=4,
                                              {
                                                       rule='term',
+                                                      pos=4,
                                                       {
                                                                rule='factor',
+                                                               pos=4,
                                                                {
                                                                         rule='IDENTIFIER',
+                                                                        pos=4,
                                                                         'a',
                                                                },
                                                       },
