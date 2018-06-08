@@ -62,10 +62,10 @@ end
 
 re.setlabels(labels)
 
-local function concat(a,b)
+function concat(a,b)
 	return a..b
 end
-local function foldtable(action,t)
+function foldtable(action,t)
 	local re
 	local first = true
 	for key,value in pairs(t) do
@@ -130,7 +130,7 @@ local gram = [=[
 			/ class
 			/ defined
 			/ {| {:action: '%'->'label':} ('{' / %{ExpNameOrLab})  S ({:op1: label:} / %{ExpLab1})  S ('}' / %{MisClose7})  |}
-			/ {| {:action: '{:'->'gcap':} {:op2: defname:} ':' !'}' ({:op1:exp:} / %{ExpPatt5}) (':}' / %{MisClose2}) |}
+			/ {| {:action: '{:'->'gcap':} {:op2: defname:} ':' ({:op1:exp:} / %{ExpPatt5}) (':}' / %{MisClose2}) |}
 			/ {| {:action: '{:'->'gcap':} ({:op1:exp:} / %{ExpPatt5}) (':}' / %{MisClose2})  |}
 			/ {| {:action: '='->'bref':} ({:op1: defname:} / %{ExpName2}) |}
 			/ {| {:action: '{}'->'poscap':} |}
@@ -138,16 +138,16 @@ local gram = [=[
 			/ {| {:action: '{|'->'tcap':} ({:op1: exp:} / %{ExpPatt7}) ('|}' / %{MisClose4}) |}
 			/ {| {:action: '{'->'scap':} ({:op1: exp:} / %{ExpPattOrClose}) ('}' / %{MisClose5}) |}
 			/ {| {:action: '.'->'anychar':} |}
-			/ !frag !nodee name S !ARROW
+			/ !frag name S !ARROW
 			/ '<' (name / %{ExpName3}) ('>' / %{MisClose6})        -- old-style non terminals
 
 	grammar		<- {| definition+ |}
-	definition	<- {| (frag / nodee)? (token / nontoken) S ARROW ({:rule: exp :} / %{ExpPatt8}) |}
+	definition	<- {| frag? (token / nontoken) S ARROW ({:rule: exp :} / %{ExpPatt8}) |}
 
 	label		<- {| {:s: ERRORNAME :} |}
 	
 	frag		<- {:fragment: 'fragment'->'1' :} ![0-9_a-z] S !ARROW
-	nodee		<- {:node: 'node'->'1' :} ![0-9_a-z] S !ARROW
+	
 	token		<- {:rulename: TOKENNAME :} {:token:''->'1':}
 	nontoken	<- {:rulename: NAMESTRING :} 
 
@@ -174,7 +174,6 @@ local gram = [=[
 local defs = {foldtable=foldtable, concat=concat}
 peg.gram = gram
 peg.defs = defs
-peg.labels = labels
 local p = re.compile ( gram, defs)
 
 
@@ -292,32 +291,25 @@ function peg.print_t ( t )  -- for debugging
         else
             print_r_cache[tostring(t)]=true
             if (type(t)=="table") then
-				local function subprint (pos,val,indent)
+				local function subprint (pos,val,ident)
 					if (type(val)=="table") then
                         print(indent.."{")
                         sub_print_r(val,indent..string.rep(" ",string.len(pos)+8))
                         print(indent..string.rep(" ",string.len(pos)-1).."},")
                     else
-						if type(val) ~= "number" then
-							val = "'"..tostring(val).."'"
-						end
-							
 						if tonumber(pos) then
-							print(indent..val..",")
+							print(indent.."'"..tostring(val).."',")
 						else
-							print(indent..pos.."="..val..",")
+							print(indent..pos.."='"..tostring(val).."',")
 						end
                     end
 				end
 				if t["rule"] then 
-					subprint("rule",t["rule"],indent)
-				end
-				if t["pos"] then
-					subprint("pos",t["pos"],indent)
+					subprint("rule",t["rule"],ident)
 				end
                 for pos,val in pairs(t) do
-					if pos ~= "rule" and pos ~= "pos" then
-						subprint(pos,val,indent)
+					if pos ~= "rule" then
+						subprint(pos,val,ident)
 					end
                 end
             else
@@ -328,7 +320,4 @@ function peg.print_t ( t )  -- for debugging
     sub_print_r(t,"")
 end
 
-function peg.calcline(subject, pos)
-	return re.calcline(subject,pos)
-end
 return peg

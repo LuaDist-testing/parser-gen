@@ -3,7 +3,7 @@
 -- Lua 5.1 compatible
 local unpack = unpack or table.unpack
 -- GLOBAL
-local Stack = {}
+Stack = {}
 
 -- Create a Table with stack functions
 function Stack:Create()
@@ -61,7 +61,5 @@ function Stack:Create()
   end
   return t
 end
-
-return {Stack=Stack}
 
 -- CHILLCODE™

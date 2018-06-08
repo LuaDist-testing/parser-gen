@@ -3,7 +3,7 @@ local peg = require "peg-parser"
 
 local eq = require "equals"
 local equals = eq.equals
-print("\n\n [[ PARSING LUA TEST SUITE FILES ]] \n\n")
+print("\n\n [[ PARSING LUA TEST FILES ]] \n\n")
 local filenames = {
 'all.lua',
 'main.lua',
@@ -53,7 +53,7 @@ for k,v in ipairs(filenames) do
 end
 assert(errs == 0)
 
-print("\n\n Test suite files compiled successfully")
+print("\n\n All files compiled successfully")
 
 
 print("\n\n [[ TESTING ERROR LABELS ]] ")
@@ -583,113 +583,88 @@ if abc > 123 then
 	abc=123 
 end]]
 rez = {
-	rule='chunk',
-	pos=3,
 	{
-			 rule='block',
-			 pos=3,
-			 {
-					  rule='stat',
-					  pos=3,
-					  'if',
-					  {
-							   rule='exp',
-							   pos=6,
-							   {
-										rule='exp',
-										{
-												 rule='exp',
-												 {
-														  rule='expTokens',
-														  pos=6,
-														  {
-																   rule='prefixexp',
-																   pos=6,
-																   {
-																			rule='varOrExp',
-																			pos=6,
-																			{
-																					 rule='var',
-																					 pos=6,
-																					 {
-																							  rule='NAME',
-																							  pos=6,
-																							  'abc',
-																					 },
-																			},
-																   },
-														  },
-												 },
-										},
-										{
-												 rule='operatorComparison',
-												 pos=10,
-												 '>',
-										},
-										{
-												 rule='expTokens',
-												 pos=12,
-												 {
-														  rule='number',
-														  pos=12,
-														  {
-																   rule='INT',
-																   pos=12,
-																   '123',
-														  },
-												 },
-										},
-							   },
-					  },
-					  'then',
-					  {
-							   rule='block',
-							   pos=23,
-							   {
-										rule='stat',
-										pos=23,
-										{
-												 rule='varlist',
-												 pos=23,
-												 {
-														  rule='var',
-														  pos=23,
-														  {
-																   rule='NAME',
-																   pos=23,
-																   'abc',
-														  },
-												 },
-										},
-										'=',
-										{
-												 rule='explist',
-												 pos=27,
-												 {
-														  rule='exp',
-														  pos=27,
-														  {
-																   rule='expTokens',
-																   pos=27,
-																   {
-																			rule='number',
-																			pos=27,
-																			{
-																					 rule='INT',
-																					 pos=27,
-																					 '123',
-																			},
-																   },
-														  },
-												 },
-										},
-							   },
-					  },
-					  'end',
-			 },
+		{
+			'if',
+			{
+				{
+					{
+						{
+							{
+								{
+									'abc',
+									rule='NAME',
+								},
+								rule='var',
+							},
+							rule='varOrExp',
+						},
+						rule='prefixexp',
+					},
+					rule='expTokens',
+				},
+				{
+					{
+						'>',
+						rule='operatorComparison',
+					},
+					{
+						{
+							{
+								{
+									'123',
+									rule='INT',
+								},
+								rule='number',
+							},
+							rule='expTokens',
+						},
+						rule='exp',
+					},
+					rule='expOps',
+				},
+				rule='exp',
+			},
+			'then',
+			{
+				{
+					{
+						{
+							{
+								'abc',
+								rule='NAME',
+							},
+							rule='var',
+						},
+						rule='varlist',
+					},
+					'=',
+					{
+						{
+							{
+								{
+									{
+										'123',
+										rule='INT',
+									},
+									rule='number',
+								},
+								rule='expTokens',
+							},
+							rule='exp',
+						},
+						rule='explist',
+					},
+					rule='stat',
+				},
+				rule='block',
+			},
+			'end',
+			rule='stat',
+		},
+		rule='block',
 	},
-
-
+	rule='chunk',
 }
 
 
@@ -708,86 +683,64 @@ return a
 ]==]
 ]]
 rez = {
-
-	rule='chunk',
-	pos=3,
+{
 	{
-			 rule='block',
-			 pos=3,
-			 {
-					  rule='stat',
-					  pos=3,
-					  'local',
-					  {
-							   rule='localAssign',
-							   pos=9,
-							   {
-										rule='namelist',
-										pos=9,
-										{
-												 rule='NAME',
-												 pos=9,
-												 'a',
-										},
-							   },
-							   '=',
-							   {
-										rule='explist',
-										pos=13,
-										{
-												 rule='exp',
-												 pos=13,
-												 {
-														  rule='expTokens',
-														  pos=13,
-														  {
-																   rule='string',
-																   pos=13,
-																   ' long string ',
-														  },
-												 },
-										},
-							   },
-					  },
-			 },
-			 {
-					  rule='retstat',
-					  pos=41,
-					  'return',
-					  {
-							   rule='explist',
-							   pos=48,
-							   {
-										rule='exp',
-										pos=48,
-										{
-												 rule='expTokens',
-												 pos=48,
-												 {
-														  rule='prefixexp',
-														  pos=48,
-														  {
-																   rule='varOrExp',
-																   pos=48,
-																   {
-																			rule='var',
-																			pos=48,
-																			{
-																					 rule='NAME',
-																					 pos=48,
-																					 'a',
-																			},
-																   },
-														  },
-												 },
-										},
-							   },
-					  },
-			 },
+		'local',
+		{
+			{
+				{
+					'a',
+					rule='NAME',
+				},
+				rule='namelist',
+			},
+			'=',
+			{
+				{
+					{
+						{
+							' long string ',
+							rule='string',
+						},
+						rule='expTokens',
+					},
+					rule='exp',
+				},
+				rule='explist',
+			},
+			rule='localAssign',
+		},
+		rule='stat',
 	},
-
-
-
+	{
+		'return',
+		{
+			{
+				{
+					{
+						{
+							{
+								{
+									'a',
+									rule='NAME',
+								},
+								rule='var',
+							},
+							rule='varOrExp',
+						},
+						rule='prefixexp',
+					},
+					rule='expTokens',
+				},
+				rule='exp',
+			},
+			rule='explist',
+		},
+		rule='retstat',
+	},
+	rule='block',
+},
+rule='chunk',
 }
 print("Parsing '"..s.."'")
 res, err = lua.parse(s)

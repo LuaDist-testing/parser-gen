@@ -1,8 +1,8 @@
 package = "parser-gen"
-version = "1.0-7"
+version = "1.0-6"
 source = {
    url = "git://github.com/vsbenas/parser-gen",
-   tag = "v1.0"
+   tag = "1.0"
 }
 description = {
    summary = "A PEG parser generator that handles space characters, generates ASTs and adds error labels automatically.",

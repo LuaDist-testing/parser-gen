@@ -5,34 +5,7 @@ Based on https://github.com/antlr/grammars-v4/blob/master/lua/Lua.g4 and https:/
 package.path = package.path .. ";../?.lua"
 local pg = require "parser-gen"
 function equals(s,i,a,b) return #a == #b end
-function fixexp (...)
-  local exp = {...}
-  local len = #exp
-  if len > 1 then
-    exp.rule = "exp"
-    exp[len].rule = "exp"
-    return exp
-  elseif exp[1] then
-    if exp[1].rule == "expTokens" then
-      return exp[1]
-    else
-      return exp[1][1]
-    end
-  end
-end
-function fold (...)
-  local exp = {...}
-  local len = #exp
-  if len > 1 then
-    local folded = { rule = "exp", fixexp(exp[1]) }
-    for i = 2, len, 2 do
-      folded = { rule = "exp", folded, exp[i], fixexp(exp[i+1]) }
-    end
-    return folded
-  elseif exp[1] then
-    return exp[1][1]
-  end
-end
+function tryprint(s,i,a) print(a) return true end
 -- from  https://github.com/andremm/lua-parser/blob/master/lua-parser/parser.lua
 local labels = {
 	ErrExtra="unexpected character(s), expected EOF",
@@ -129,7 +102,6 @@ local grammar = pg.compile([==[
 	block		<-	stat* retstat?
 	stat		<-	';' /
 					functioncall /
-					varlist '='^ErrEqAssign explist^ErrEListAssign /
 					'break' /
 					'goto' NAME^ErrGoto /
 					'do' block 'end'^ErrEndDo  /
@@ -137,9 +109,9 @@ local grammar = pg.compile([==[
 					'repeat' block 'until'^ErrUntilRep exp^ErrExprRep /
 					'if' exp^ErrExprIf 'then'^ErrThenIf block ('elseif' exp^ErrExprEIf 'then'^ErrThenEIf  block)* ('else' block)? 'end'^ErrEndIf /
 					'for' (forNum / forIn)^ErrForRange 'do'^ErrDoFor  block 'end'^ErrEndFor /
-					
 					'function' funcname^ErrFuncName funcbody / 
-					'local' (localAssign / localFunc)^ErrDefLocal /
+					'local' (localFunc / localAssign)^ErrDefLocal /
+					varlist '='^ErrEqAssign explist^ErrEListAssign /
 					label /
 					!blockEnd %{ErrInvalidStat}
 	blockEnd	<-	'return' / 'end' / 'elseif' / 'else' / 'until' / !.
@@ -153,26 +125,23 @@ local grammar = pg.compile([==[
 	varlist		<-	var (',' var^ErrVarList)*
 	namelist	<-	NAME (',' NAME)*
 	explist		<-	exp (',' exp^ErrExprList )*
-	
-	exp		<-	expOR -> fixexp
-	expOR		<-	(expAND (operatorOr expAND^ErrOrExpr)*) -> fold
-	expAND		<- 	(expREL (operatorAnd expREL^ErrAndExpr)*) -> fold
-	expREL		<-	(expBIT (operatorComparison expBIT^ErrRelExpr)*) -> fold
-	expBIT		<- 	(expCAT (operatorBitwise expCAT^ErrBitwiseExpr)*) -> fold
-	expCAT		<- 	(expADD (operatorStrcat expCAT^ErrConcatExpr)?) -> fixexp
-	expADD		<- 	(expMUL (operatorAddSub expMUL^ErrAddExpr)*) -> fold
-	expMUL		<-	(expUNA (operatorMulDivMod expUNA^ErrMulExpr)*) -> fold
-	expUNA		<-	((operatorUnary expUNA^ErrUnaryExpr) / expPOW) -> fixexp
-	expPOW		<- 	(expTokens (operatorPower expUNA^ErrPowExpr)?) -> fixexp
-	
+	exp		<-	expTokens expOps?
 	expTokens	<-	'nil' / 'false' / 'true' /
+					operatorUnary exp^ErrUnaryExpr /
 					number /
 					string /
 					'...' /
-					'function' funcbody /
-					tableconstructor  /
-					prefixexp 
-
+					functiondef /
+					prefixexp /
+					tableconstructor 
+	expOps		<-	operatorPower exp^ErrPowExpr / -- assoc= right
+					operatorMulDivMod exp^ErrMulExpr / -- left
+					operatorAddSub exp^ErrAddExpr /
+					operatorStrcat exp^ErrConcatExpr / -- right
+					operatorComparison exp^ErrRelExpr /
+					operatorBitwise exp^ErrBitwiseExpr /
+					operatorAnd exp^ErrAndExpr /
+					operatorOr exp^ErrOrExpr
 	prefixexp	<-	varOrExp nameAndArgs*
 	functioncall	<-	varOrExp nameAndArgs+
 	varOrExp	<-	var / brackexp
@@ -182,30 +151,29 @@ local grammar = pg.compile([==[
 	nameAndArgs	<-	(':' !':' NAME^ErrNameMeth args^ErrMethArgs) /
 					args
 	args		<-	'(' explist? ')'^ErrCParenArgs / tableconstructor / string
+	functiondef	<-	'function' funcbody
 	funcbody	<-	'('^ErrOParenPList parlist? ')'^ErrCParenPList block 'end'^ErrEndFunc
 	parlist		<-	namelist (',' '...'^ErrParList)? / '...'
 	tableconstructor<-	'{' fieldlist? '}'^ErrCBraceTable
 	fieldlist	<-	field (fieldsep field)* fieldsep?
-	field		<-	!OPEN '[' exp^ErrExprFKey ']'^ErrCBracketFKey '='^ErrEqField exp^ErrExprField /
+	field		<-	'[' exp^ErrExprFKey ']'^ErrCBracketFKey '='^ErrEqField exp^ErrExprField /
 						NAME '=' exp  /
 						exp 
 	fieldsep	<-	',' / ';'
 	operatorOr	<-	'or'
 	operatorAnd	<-	'and'
 	operatorComparison<-	'<=' / '>=' / '~=' / '==' / '<' !'<' / '>' !'>'
-	operatorStrcat	<-	!'...' '..'
+	operatorStrcat	<-	'..'
 	operatorAddSub	<-	'+' / '-'
 	operatorMulDivMod<-	'*' / '%' / '//' / '/' 
-	operatorBitwise	<-	'&' / '|' / !'~=' '~' / '<<' / '>>'
-	operatorUnary	<-	'not' / '#' / '-' / !'~=' '~'
+	operatorBitwise	<-	'&' / '|' / '~' / '<<' / '>>'
+	operatorUnary	<-	'not' / '#' / '-' / '~'
 	operatorPower	<-	'^'
 	number		<-	FLOAT / HEX_FLOAT / HEX / INT
 	string		<-	NORMALSTRING / CHARSTRING / LONGSTRING    
 	-- lexer
 	fragment
-	RESERVED	<-	KEYWORDS !IDREST
-	fragment
-	IDREST		<- 	[a-zA-Z_0-9]
+	RESERVED	<-	KEYWORDS ![a-zA-Z_0-9]
 	fragment
 	KEYWORDS	<-	'and' / 'break' / 'do' / 'elseif' / 'else' / 'end' /
 					'false' / 'for' / 'function' / 'goto' / 'if' / 'in' /
@@ -213,20 +181,20 @@ local grammar = pg.compile([==[
 					'then' / 'true' / 'until' / 'while'
 	NAME		<-	!RESERVED [a-zA-Z_] [a-zA-Z_0-9]*
 	fragment
-	NORMALSTRING	<-	'"' {( ESC / [^"\] )*} '"'^ErrQuote
+	NORMALSTRING	<-	'"' ( ESC / [^"\] )* '"'^ErrQuote
 	fragment
-	CHARSTRING	<-	"'" {( ESC / [^\'] )*} "'"^ErrQuote
+	CHARSTRING	<-	"'" ( ESC / [^\'] )* "'"^ErrQuote
 	fragment
 	LONGSTRING	<-	(OPEN {(!CLOSEEQ .)*} CLOSE^ErrCloseLStr) -> 1 -- capture only the string
 
 	fragment 
 	OPEN 		<-	'[' {:openEq: EQUALS :}  '[' %nl?
 	fragment 
-	CLOSE 		<-	']' {EQUALS} ']'
+	CLOSE 		<-	']' {:closeEq: EQUALS :} ']'
 	fragment 
 	EQUALS 		<-	'='*
 	fragment 
-	CLOSEEQ 	<-	(CLOSE =openEq) => equals
+	CLOSEEQ 	<-	CLOSE ((=openEq =closeEq) => equals)
 
 	INT		<-	DIGIT+
 	HEX		<-	'0' [xX] HEXDIGIT+^ErrDigitHex
@@ -275,9 +243,9 @@ local grammar = pg.compile([==[
 	SKIP		<-	%nl / %s / COMMENT / LINE_COMMENT / SHEBANG	 
 	fragment
 	HELPER		<-	RESERVED / '(' / ')'  -- for sync expression
-	SYNC		<-	((!HELPER !SKIP .)+ / .?) SKIP* -- either sync to reserved keyword or skip characters and consume them
+	SYNC		<-	(!HELPER !SKIP .)* (SKIP)* -- either sync to reserved keyword or skip characters and consume them
 			
-]==],{ equals = equals, fixexp = fixexp, fold = fold })
+]==],{ equals = equals,tryprint = tryprint})
 local errnr = 1
 local function err (desc, line, col, sfail, recexp)
 	print("Syntax error #"..errnr..": "..desc.." at line "..line.."(col "..col..")")
@@ -285,7 +253,11 @@ local function err (desc, line, col, sfail, recexp)
 end
 local function parse (input)
 	errnr = 1
+	
 	local ast, errs = pg.parse(input,grammar,err)
 	return ast, errs
 end
 return {parse=parse}
+--[[
+	
+--]]

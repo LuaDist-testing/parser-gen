@@ -4,11 +4,7 @@ local eg = require "errorgen"
 local s = require "stack"
 
 -- create stack for tokens inside captures. nil - not inside capture, 0 - inside capture, 1 - token found inside capture
-local tokenstack = s.Stack:Create()
-
-
-
-local subject, errors, errorfunc
+local tokenstack = Stack:Create()
 
 -- Lua 5.1 compatibility:
 local unpack = unpack or table.unpack
@@ -54,6 +50,8 @@ local tlabelnames = {} -- reverse table
 local tdescs = {}
 local trecs = {} -- recovery for each error
 
+local currentrule
+local followset = {}
 
 local function defaultsync(patt)
 	return (m.P(1)^-1) * (-patt * m.P(1))^0
@@ -140,7 +138,96 @@ local function finalNode (t)
 	end
 	return nil
 end
-local bg = {} -- local variable to keep global function buildgrammar
+local function specialrules(t, builder)
+	-- initialize values
+	SKIP = (Predef.space + Predef.nl)
+	skipspaces = true
+	SYNC = nil
+	recovery = true
+	-- find SPACE and SYNC rules
+	for i, v in ipairs(ast) do
+		local name = v["rulename"]
+		local rule
+		if name == "SKIP" then
+			rule = traverse(v["rule"], true)
+			if v["rule"]["t"] == '' then
+				skipspaces = false
+			else
+				skipspaces = true
+				SKIP = rule
+			end
+			builder[name] = rule
+		elseif name == "SYNC" then
+			rule = traverse(v["rule"], true)
+			if v["rule"]["t"] == '' then-- SYNC <- ''
+				recovery=false
+			else
+				recovery= true
+				SYNC = rule
+			end
+			builder[name] = rule
+		end
+	end
+	if not SYNC and recovery then
+		SYNC = defaultsync(SKIP)
+	end
+end
+
+local function buildrecovery(grammar)
+
+	local synctoken = sync(SYNC)
+	local grec = grammar
+	
+	for k,v in pairs(tlabels) do
+
+		if trecs[v] then -- custom sync token
+			grec = m.Rec(grec,record(v) * trecs[v], v)
+		else -- use global sync token
+			grec = m.Rec(grec,record(v) * synctoken, v)
+		end
+	end
+	return grec
+	
+end
+local function buildgrammar (ast)
+	local builder = {}
+	specialrules(ast, builder)
+	local initialrule
+	for i, v in ipairs(ast) do
+		local istokenrule = v["token"] == "1"
+		local isfragment = v["fragment"] == "1"
+
+		local name = v["rulename"]
+		currentrule = name
+		local isspecial = name == "SKIP" or name == "SYNC"
+		local rule = v["rule"]
+		if i == 1 then
+			initialrule = name
+			table.insert(builder, name) -- lpeg syntax
+			builder[name] = traverse(rule, istokenrule)
+		else
+			if not builder[name] then -- dont traverse rules for SKIP and SYNC twice
+				builder[name] = traverse(rule, istokenrule)
+			end
+		end
+		if buildast and not isfragment and not isspecial then
+			if istokenrule then
+				builder[name] = m.C(builder[name])
+			end
+			builder[name] = m.Ct(m.Cg(m.Cc(name),"rule") * builder[name])
+		end
+	end
+
+	if skipspaces then
+		builder[initialrule] = SKIP^0 * builder[initialrule] -- skip spaces at the beginning of the input
+	end
+	if recovery then
+		builder[initialrule] = buildrecovery(builder[initialrule]) -- build recovery on top of initial rule
+	end
+	return builder
+end
+
+
 
 
 local function addspaces (caps)
@@ -215,13 +302,10 @@ local function applyaction(action, op1, op2, labels,tokenrule)
 		end
 		return m.T(lab) -- lpeglabel
 	elseif action == "%" then
-		if definitions[op1] then
-			return definitions[op1]
-		elseif Predef[op1] then
+		if Predef[op1] then
 			return Predef[op1]
-		else
-			error("Definition for '%"..op1.."' unspecified(use second parameter of parser-gen.compile())")
 		end
+		return definitions[op1]
 	elseif action == "invert" then
 		return m.P(1) - op1
 	elseif action == "range" then
@@ -258,11 +342,7 @@ local function applyfinal(action, term, tokenterm, tokenrule)
 			return m.V(term)
 		end
 	elseif action == "func" then
-		if definitions[term] then
-			return definitions[term]
-		else
-			error("Definition for function '"..term.."' unspecified (use second parameter of parser-gen.compile())")
-		end
+		return definitions[term]
 	elseif action == "s" then -- simple string
 		return term
 	elseif action == "num" then -- numbered string
@@ -275,7 +355,22 @@ local function applygrammar(gram)
 	return m.P(gram)
 end
 
-local function traverse (ast, tokenrule)
+
+local function build(ast, defs)
+	if defs then
+		definitions = defs
+	end
+	if isgrammar(ast) then
+		
+		return traverse(ast)
+	else
+		currentrule = ''
+		return SKIP^0 * traverse(ast) -- input is not a grammar - skip spaces by default
+	end
+end
+
+
+function traverse (ast, tokenrule)
 	if not ast then
 		return nil 
 	end
@@ -305,7 +400,7 @@ local function traverse (ast, tokenrule)
 		
 	elseif isgrammar(ast) then
 		--
-		local g = bg.buildgrammar (ast)
+		local g = buildgrammar (ast)
 		return applygrammar (g)
 		
 	else
@@ -315,44 +410,25 @@ local function traverse (ast, tokenrule)
 
 end
 
-local function specialrules(ast, builder)
-	-- initialize values
-	SKIP = (Predef.space + Predef.nl)
-	skipspaces = true
-	SYNC = nil
-	recovery = true
-	-- find SPACE and SYNC rules
-	for i, v in ipairs(ast) do
-		local name = v["rulename"]
-		local rule
-		if name == "SKIP" then
-			rule = traverse(v["rule"], true)
-			if v["rule"]["t"] == '' then
-				skipspaces = false
-			else
-				skipspaces = true
-				SKIP = rule
-			end
-			builder[name] = rule
-		elseif name == "SYNC" then
-			rule = traverse(v["rule"], true)
-			if v["rule"]["t"] == '' then-- SYNC <- ''
-				recovery=false
-			else
-				recovery= true
-				SYNC = rule
-			end
-			builder[name] = rule
-		end
-	end
-	if not SYNC and recovery then
-		SYNC = defaultsync(SKIP)
-	end
+-- recovery grammar
+
+-- from relabel.lua module
+local function calcline (s, i)
+  if i == 1 then return 1, 1 end
+  local rest, line = s:sub(1,i):gsub("[^\n]*\n", "")
+  local col = #rest
+  return 1 + line, col ~= 0 and col or 1
 end
 
-local function recorderror(position,label)
+local subject, errors, errorfunc
+
+function record(label)
+	return (m.Cp() * m.Cc(label)) / recorderror
+end
+
+function recorderror(position,label)
 	-- call error function here
-	local line, col = peg.calcline(subject, position)
+	local line, col = calcline(subject, position)
 	local desc
 	if label == 0 then
 		desc = "Syntax error"
@@ -370,101 +446,6 @@ local function recorderror(position,label)
 	table.insert(errors, err)
 
 end
-local function record(label)
-	return (m.Cp() * m.Cc(label)) / recorderror
-end
-
-local function buildrecovery(grammar)
-
-	local synctoken = pattspaces(sync(SYNC))
-	local grec = grammar
-	
-	for k,v in pairs(tlabels) do
-
-		if trecs[v] then -- custom sync token
-			grec = m.Rec(grec,record(v) * pattspaces(trecs[v]), v)
-		else -- use global sync token
-			grec = m.Rec(grec,record(v) * synctoken, v)
-		end
-	end
-	return grec
-	
-end
-local usenode = false
-
-local function usenodes(val)
-	usenode = val
-end
-
-
-function bg.buildgrammar (ast)
-	local builder = {}
-	specialrules(ast, builder)
-	local initialrule
-	for i, v in ipairs(ast) do
-		local istokenrule = v["token"] == "1"
-		local isfragment = v["fragment"] == "1"
-		local isnode = v["node"] == "1"
-		
-		if isnode and not usenodes then
-			error("Node mode disabled - please use parser-gen.usenodes(true) before compiling the grammar")
-		end
-		
-		local name = v["rulename"]
-		local isspecial = name == "SKIP" or name == "SYNC"
-		local rule = v["rule"]
-		if i == 1 then
-			initialrule = name
-			table.insert(builder, name) -- lpeg syntax
-			builder[name] = traverse(rule, istokenrule)
-		else
-			if not builder[name] then -- dont traverse rules for SKIP and SYNC twice
-				builder[name] = traverse(rule, istokenrule)
-			end
-		end
-		if buildast and not isfragment and not isspecial and ((not usenode) or (usenode and isnode)) then 
-			if istokenrule then
-				builder[name] = m.C(builder[name])
-			end
-			builder[name] = m.Ct(m.Cg(m.Cc(name),"rule") * m.Cg(m.Cp(),"pos") * builder[name]) 
-		end
-	end
-
-	if skipspaces then
-		builder[initialrule] = SKIP^0 * builder[initialrule] -- skip spaces at the beginning of the input
-	end
-	if recovery then
-		builder[initialrule] = buildrecovery(builder[initialrule]) -- build recovery on top of initial rule
-	end
-	return builder
-end
-
-
-
-
-local function build(ast, defs)
-	if defs then
-		definitions = defs
-	end
-	if isgrammar(ast) then
-		return traverse(ast)
-	else
-		SKIP = (Predef.space + Predef.nl)
-		skipspaces = true
-		SYNC = nil
-		recovery = true
-		SYNC = defaultsync(SKIP)
-		local res = SKIP ^0 * traverse(ast)
-		if buildast then
-			res = m.Ct(res)
-		end
-		return res -- input is not a grammar - skip spaces and sync by default
-	end
-end
-
-
-
--- recovery grammar
 
 
 
@@ -505,7 +486,7 @@ local function setlabels (t, errorgen)
 end
 
 
-local function compile (input, defs, generrors, nocaptures)
+local function compile (input, defs, errors, nocaptures)
 	if iscompiled(input) then 
 		return input 
 	end
@@ -517,8 +498,8 @@ local function compile (input, defs, generrors, nocaptures)
 		--re.setlabels(tlabels)
 		--re.compile(input,defs)
 		-- build ast
-		local ast = peg.pegToAST(input)
-		if generrors then
+		ast = peg.pegToAST(input)
+		if errors then
 			local follow = eg.follow(ast)
 			local errors = eg.adderrors(ast, follow)
 			setlabels (errors, true) -- add errors generated by errorgen
@@ -539,9 +520,10 @@ end
 
 
 local function parse (input, grammar, errorfunction)
+	sp = {}
 	if not iscompiled(grammar) then
 
-		local cp = compile(grammar)
+		cp = compile(grammar)
 		grammar = cp
 	end
 	-- set up recovery table
@@ -561,7 +543,6 @@ end
 
 
 
-
-local pg = {compile=compile, setlabels=setlabels, parse=parse,follow=follow, calcline = peg.calcline, usenodes = usenodes}
+local pg = {compile=compile, setlabels=setlabels, parse=parse,follow=follow}
 
 return pg

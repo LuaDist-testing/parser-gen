@@ -289,7 +289,7 @@ end
 
 -- functions to add errors
 -- find size of table
-local function getn (t)
+function getn (t)
   local size = 0
   for _, _ in pairs(t) do
     size = size+1
@@ -364,7 +364,7 @@ local function adderrors_aux(ast,tokenrule)
 
 	if isaction(ast) then
 	
-		local act, op1, op2
+		local act, op1, op2, labs, ret1, ret2
 		act = ast["action"]
 		op1 = ast["op1"]
 		op2 = ast["op2"]
@@ -385,11 +385,11 @@ local function adderrors(t, followset)
 	TERRS = {}
 	if isgrammar(t) then 
 		for pos,val in pairs(t) do
-			local currentrule = val.rulename
+			currentrule = val.rulename
 			FOLLOW = followset[currentrule]
 			local rule = val.rule
 			local istokenrule = val.token == "1"
-			adderrors_aux(rule,istokenrule)
+			local temp = adderrors_aux(rule,istokenrule)
 		end
 	else
 		FOLLOW = followset['']
